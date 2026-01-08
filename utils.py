@@ -123,3 +123,4 @@ def enviar_email(arquivo_buffer, destinatario):
         server.quit()
         return True
     except: return False
+
