@@ -19,10 +19,13 @@ CLIENT_CONFIG = {
 
 # --- GERENCIAMENTO DE PERMISSÕES ---
 def carregar_permissoes():
-    # Carrega do secrets em vez de arquivo json local
-    lista_fixa = st.secrets["acesso"]["permitidos"]
-    # Transforma em dicionário para compatibilidade
-    return {email: "Técnico" for email in lista_fixa}
+    # Se o arquivo não existir, cria com o Admin definido nos secrets
+    if not os.path.exists(PERMISSOES_FILE):
+        admin_email = st.secrets["admin"]["email"]
+        dados_iniciais = {admin_email: "Admin"}
+        with open(PERMISSOES_FILE, "w") as f:
+            json.dump(dados_iniciais, f)
+        return dados_iniciais
     
     with open(PERMISSOES_FILE, "r") as f:
         return json.load(f)
@@ -191,4 +194,5 @@ def tela_login():
 
 
     
+
 
