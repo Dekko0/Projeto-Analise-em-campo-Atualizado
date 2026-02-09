@@ -699,6 +699,56 @@ def enviar_email_backup_servico(destinatario, zip_path):
         return False
 
 
+# --- CONTROLE DE SESSÃO PERSISTENTE (LEMBRAR DE MIM) ---
+ARQUIVO_REMEMBER_ME = "session_token.json"
+DIAS_EXPIRACAO = 7
+
+def salvar_sessao_persistente(usuario):
+    """
+    Salva um token de sessão local para 'Lembrar de mim'.
+    Não armazena senhas, apenas o usuário e a data de validade.
+    """
+    try:
+        expiracao = datetime.now() + timedelta(days=DIAS_EXPIRACAO)
+        dados = {
+            "usuario": usuario,
+            "expira_em": expiracao.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        with open(ARQUIVO_REMEMBER_ME, "w") as f:
+            json.dump(dados, f)
+    except Exception as e:
+        print(f"[Auth] Erro ao salvar sessão persistente: {e}")
+
+def verificar_sessao_persistente():
+    """
+    Verifica se existe uma sessão salva e válida.
+    Retorna o nome do usuário se válido, ou None se inválido/expirado.
+    """
+    if not os.path.exists(ARQUIVO_REMEMBER_ME):
+        return None
+        
+    try:
+        with open(ARQUIVO_REMEMBER_ME, "r") as f:
+            dados = json.load(f)
+            
+        expira_em = datetime.strptime(dados["expira_em"], "%Y-%m-%d %H:%M:%S")
+        
+        if datetime.now() < expira_em:
+            return dados["usuario"]
+        else:
+            # Token expirado, limpa o arquivo
+            limpar_sessao_persistente()
+            return None
+    except:
+        return None
+
+def limpar_sessao_persistente():
+    """Remove o arquivo de sessão persistente (Logout manual)."""
+    if os.path.exists(ARQUIVO_REMEMBER_ME):
+        try:
+            os.remove(ARQUIVO_REMEMBER_ME)
+        except:
+            pass
 
 
 
