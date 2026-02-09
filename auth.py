@@ -56,9 +56,17 @@ def tela_login():
             st.markdown("<h1 style='text-align: center; color: #16FA34;'><span class='material-symbols-outlined' style='font-size: 40px;'>bolt</span> PoupEnergia</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center;'>Sistema de Levantamento de Cargas</p>", unsafe_allow_html=True)
             
+            # ---auth.py---
+
+# ... (código existente acima) ...
+
             u_db = carregar_usuarios()
             u = st.selectbox("Técnico Responsável", options=["Selecione..."] + list(u_db.keys()))
             p = st.text_input("Senha de Acesso", type="password")
+            
+            # --- NOVO: Checkbox Lembrar de mim ---
+            lembrar = st.checkbox("Lembrar de mim (7 dias)")
+            # -------------------------------------
             
             # icone no botão
             if st.button("Acessar Sistema", use_container_width=True, type="primary"):
@@ -71,10 +79,18 @@ def tela_login():
                         
                         st.session_state['usuario_ativo'] = u
                         st.session_state['db_formularios'] = carregar_dados_locais()
+                        
+                        # --- NOVO: Persistência ---
+                        if lembrar:
+                            from utils import salvar_sessao_persistente
+                            salvar_sessao_persistente(u)
+                        # --------------------------
+
                         carregar_modelo_atual()
                         st.rerun()
-                    else:
-                        st.error("Senha inválida.")
-                else: 
-                    st.error("Usuário não encontrado.")
+                
+                st.error("Usuário ou senha incorretos.")
+
+# ... (código existente abaixo) ...
+                
     st.stop()
