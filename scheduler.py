@@ -6,7 +6,7 @@ import os
 import streamlit as st
 
 # --- CONSTANTES ---
-HORA_ENVIO = 20  # 20:00
+HORA_ENVIO = 12  # 20:00
 
 def _rotina_agendamento():
     """
@@ -78,4 +78,5 @@ def iniciar_agendador():
         thread = threading.Thread(target=_rotina_agendamento, daemon=True)
         thread.start()
         st.session_state['agendador_iniciado'] = True
+
         print("[System] Agendador atualizado iniciado.")
