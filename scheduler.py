@@ -6,7 +6,7 @@ import os
 import streamlit as st
 
 # --- CONSTANTES ---
-HORA_ENVIO = 12  # 20:00
+HORA_ENVIO = 20
 
 def _rotina_agendamento():
     """
@@ -51,17 +51,22 @@ def _rotina_agendamento():
                 email_admin = config_admin.get("email")
                 ultimo_envio_admin = estado_admin.get("data_ultimo_envio")
                 
-                if email_admin and ultimo_envio_admin != hoje_str:
+                admin_ativo = config_admin.get("ativo", bool(email_admin))
+
+                if admin_ativo and email_admin and ultimo_envio_admin != hoje_str:
                     try:
                         print(f"[Scheduler] Iniciando Auditoria Global para: {email_admin}")
                         zip_global = utils.gerar_zip_sistema() # Usa função existente que zipa tudo
                         
-                        if zip_global:
+                        if zip_global and os.path.exists(zip_global):
                             sucesso = utils.enviar_email_backup_servico(email_admin, zip_global)
                             if sucesso:
                                 utils.salvar_estado_backup(hoje_str, "sucesso")
                                 print("[Scheduler] Backup Auditoria enviado.")
                                 os.remove(zip_global)
+                        else:
+                            utils.salvar_estado_backup(None, "sem_dados")
+                            print("[Scheduler] Auditoria sem dados para envio.")
                     except Exception as e_adm:
                         print(f"[Scheduler] Erro crítico no backup Admin: {e_adm}")
 
