@@ -50,6 +50,17 @@ def salvar_prefs_cliente(usuario, email, ativo):
     with open(ARQUIVO_PREFS_CLIENTES, "w") as f:
         json.dump(prefs, f, indent=4)
 
+
+def _coletar_fotos_de_registros(registros):
+    """Retorna caminhos de fotos válidos a partir de uma lista de registros."""
+    fotos = set()
+    for registro in registros:
+        for foto in registro.get("fotos", []):
+            caminho_fisico = foto.get("caminho_fisico")
+            if caminho_fisico and os.path.exists(caminho_fisico):
+                fotos.add(caminho_fisico)
+    return fotos
+
 def atualizar_status_envio_cliente(usuario, data_envio):
     """Atualiza a flag de data do último envio para o cliente."""
     prefs = carregar_prefs_todos_clientes()
@@ -66,31 +77,28 @@ def gerar_zip_usuario(usuario):
     Assume que os arquivos de dados possuem o nome do usuário ou estrutura identificável.
     """
     try:
+        dados_path = get_user_data_path(usuario)
+        if not dados_path or not os.path.exists(dados_path):
+            return None
+
+        registros = carregar_dados_locais(dados_path)
+        if not registros:
+            return None
+
         nome_zip = f"backup_{usuario}_{datetime.now().strftime('%Y%m%d')}.zip"
-        
-        # Filtra os arquivos JSON do usuário
-        # Pressupõe que o sistema salva como '{usuario}.json' ou similar conforme contexto
-        # Se o sistema usa uma pasta por usuário, ajuste para shutil.make_archive na pasta
-        
+        template_path = get_user_template_path(usuario)
+        fotos_usuario = _coletar_fotos_de_registros(registros)
+
         with zipfile.ZipFile(nome_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # 1. Adicionar JSON de dados do usuário
-            # Tentativa de encontrar o arquivo específico do usuário
-            arquivo_dados = f"{usuario}.json" 
-            if os.path.exists(arquivo_dados):
-                zipf.write(arquivo_dados)
-            
-            # 2. Adicionar Excel exportado (se existir pré-gerado)
-            # Caso contrário, pode-se omitir ou gerar on-the-fly se necessário
-            
-            # 3. Adicionar Fotos (filtrando apenas as do usuário se estiverem misturadas)
-            # Se as fotos estiverem em pastas separadas por usuário:
-            pasta_fotos = os.path.join("fotos", usuario)
-            if os.path.exists(pasta_fotos):
-                for root, _, files in os.walk(pasta_fotos):
-                    for file in files:
-                        zipf.write(os.path.join(root, file), 
-                                   arcname=os.path.join(usuario, "fotos", file))
-                                   
+            zipf.write(dados_path)
+
+            if template_path and os.path.exists(template_path):
+                zipf.write(template_path)
+
+            for caminho_foto in fotos_usuario:
+                nome_foto = os.path.basename(caminho_foto)
+                zipf.write(caminho_foto, arcname=os.path.join("fotos", nome_foto))
+
         return nome_zip
     except Exception as e:
         print(f"[Erro ZIP Usuario] Falha ao gerar ZIP para {usuario}: {e}")
@@ -632,11 +640,16 @@ def exportar_para_excel(dados):
 
 def carregar_config_backup():
     if os.path.exists("config_backup.json"):
-        with open("config_backup.json", "r") as f: return json.load(f)
+        with open("config_backup.json", "r") as f:
+            config = json.load(f)
+            if "ativo" not in config:
+                config["ativo"] = bool(config.get("email"))
+            return config
     return {}
 
-def salvar_config_backup(email):
-    with open("config_backup.json", "w") as f: json.dump({"email": email}, f)
+def salvar_config_backup(email, ativo):
+    with open("config_backup.json", "w") as f:
+        json.dump({"email": email, "ativo": ativo}, f)
 
 def carregar_estado_backup():
     if os.path.exists("estado_backup.json"):
@@ -654,23 +667,42 @@ def salvar_estado_backup(data_envio, status):
     with open("estado_backup.json", "w") as f: json.dump(dados, f)
 
 def gerar_zip_sistema_completo():
-    """Gera um ZIP contendo o Excel base e os bancos de dados JSON."""
+    """Gera um ZIP de auditoria com dados de todos os clientes e anexos."""
     try:
-        nome_arquivo = "sistema_poupenergia_backup.zip"
-        arquivos = ["Levantamento_Base.xlsx", "db_formularios.json", "usuarios.json"]
-        
+        arquivos_dados = sorted([f for f in os.listdir(".") if f.startswith("dados_") and f.endswith(".json")])
+        dados_com_conteudo = []
+        fotos = set()
+
+        for arquivo_dados in arquivos_dados:
+            registros = carregar_dados_locais(path_especifico=arquivo_dados)
+            if registros:
+                dados_com_conteudo.append(arquivo_dados)
+                fotos.update(_coletar_fotos_de_registros(registros))
+
+        if not dados_com_conteudo:
+            return None
+
+        nome_arquivo = f"auditoria_poupenergia_{datetime.now().strftime('%Y%m%d')}.zip"
+
         with zipfile.ZipFile(nome_arquivo, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for arq in arquivos:
-                if os.path.exists(arq):
-                    zipf.write(arq)
-            # Backup da pasta de fotos
-            if os.path.exists("fotos"):
-                for root, _, files in os.walk("fotos"):
-                    for file in files:
-                        zipf.write(os.path.join(root, file))
+            for arquivo_dados in dados_com_conteudo:
+                zipf.write(arquivo_dados)
+
+            if os.path.exists(PLANILHA_PADRAO_ADMIN):
+                zipf.write(PLANILHA_PADRAO_ADMIN)
+
+            for caminho_foto in fotos:
+                zipf.write(caminho_foto, arcname=os.path.join("fotos", os.path.basename(caminho_foto)))
+
         return nome_arquivo
-    except:
+    except Exception as e:
+        print(f"[Erro ZIP Sistema] {e}")
         return None
+
+
+def gerar_zip_sistema():
+    """Compatibilidade com chamadas legadas."""
+    return gerar_zip_sistema_completo()
 
 def enviar_email_backup_servico(destinatario, zip_path):
     """Envia o ZIP via SMTP usando credenciais existentes."""

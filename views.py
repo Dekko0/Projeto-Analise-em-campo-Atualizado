@@ -624,6 +624,38 @@ def render_admin_panel():
     with tab_audit:
         section_title("history", "Histórico de Arquivos Locais")
         arquivos = sorted([f for f in os.listdir(".") if f.startswith("dados_") and f.endswith(".json")])
+
+        with st.container(border=True):
+            st.markdown("### Envio Automático de Auditoria")
+            st.caption("Configuração do e-mail que receberá diariamente um .zip com os dados de todos os clientes (somente quando houver dados).")
+
+            config_backup = utils.carregar_config_backup()
+            estado_backup = utils.carregar_estado_backup()
+            email_admin = config_backup.get("email", "")
+            ativo_admin = config_backup.get("ativo", bool(email_admin))
+
+            with st.form("form_backup_auditoria_admin"):
+                c_mail, c_toggle = st.columns([0.75, 0.25])
+                novo_email = c_mail.text_input("E-mail de recebimento", value=email_admin, placeholder="auditoria@empresa.com")
+                c_toggle.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+                novo_ativo = c_toggle.checkbox("Ativar envio diário", value=ativo_admin)
+
+                if st.form_submit_button("Salvar Configuração", use_container_width=True):
+                    email_valido = ("@" in novo_email and "." in novo_email) if novo_email else True
+                    if novo_ativo and not novo_email:
+                        st.error("Para ativar o envio diário, informe um e-mail.")
+                    elif novo_email and not email_valido:
+                        st.error("Informe um e-mail válido.")
+                    else:
+                        utils.salvar_config_backup(novo_email, novo_ativo)
+                        st.success("Configuração de auditoria salva com sucesso.")
+                        st.rerun()
+
+            m1, m2 = st.columns(2)
+            m1.metric("Último Envio", estado_backup.get("data_ultimo_envio", "Nenhum"))
+            m2.metric("Status", estado_backup.get("status", "Inativo"))
+
+        st.markdown("<br>", unsafe_allow_html=True)
         
         if arquivos:
             sel = st.selectbox("Selecione o arquivo de backup:", arquivos)
@@ -960,9 +992,16 @@ def view_configuracao_backup():
     
     with st.form("backup_form"):
         novo_email = st.text_input("E-mail de Destino", value=email_atual)
+        novo_ativo = st.checkbox("Ativar envio diário", value=config.get("ativo", bool(email_atual)))
         if st.form_submit_button("Salvar Configuração"):
-            if "@" in novo_email and "." in novo_email:
-                utils.salvar_config_backup(novo_email)
+            if novo_ativo and not novo_email:
+                st.error("Para ativar o envio diário, informe um e-mail.")
+            elif novo_email and "@" in novo_email and "." in novo_email:
+                utils.salvar_config_backup(novo_email, novo_ativo)
+                st.success("Configuração salva!")
+                st.rerun()
+            elif not novo_email:
+                utils.salvar_config_backup("", novo_ativo)
                 st.success("Configuração salva!")
                 st.rerun()
             else:
