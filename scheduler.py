@@ -6,7 +6,7 @@ import os
 import streamlit as st
 
 # --- CONSTANTES ---
-HORA_ENVIO = 20
+HORA_ENVIO = 16
 
 def _rotina_agendamento():
     """
@@ -85,3 +85,4 @@ def iniciar_agendador():
         st.session_state['agendador_iniciado'] = True
 
         print("[System] Agendador atualizado iniciado.")
+
