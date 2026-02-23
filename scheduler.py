@@ -5,84 +5,82 @@ import utils
 import os
 import streamlit as st
 
-# --- CONSTANTES ---
-HORA_ENVIO = 16
+# --- CONSTANTES DE AGENDAMENTO ---
+HORA_ENVIO = 16    # Hora definida para 19h
+MINUTO_ENVIO = 10   # Minutos definidos para 00min -> Total 19:00
 
 def _rotina_agendamento():
     """
-    Rotina principal que verifica backups globais (Admin) e individuais (Clientes).
+    Rotina em background que verifica se deve enviar os backups.
+    Verifica a cada minuto se o horário atual é >= ao horário configurado.
     """
     while True:
         try:
             agora = datetime.datetime.now()
             hoje_str = agora.strftime("%Y-%m-%d")
             
-            # Executa apenas se for >= 20:00
-            if agora.hour >= HORA_ENVIO:
+            # Verifica se já passamos das 19:00 hoje
+            horario_atingido = (agora.hour > HORA_ENVIO) or (agora.hour == HORA_ENVIO and agora.minute >= MINUTO_ENVIO)
+            
+            if horario_atingido:
                 
-                # --- 1. ROTINA DE CLIENTES (Individual) ---
+                # --- PROCESSAMENTO POR USUÁRIO ---
                 prefs_clientes = utils.carregar_prefs_todos_clientes()
                 
                 for usuario, config in prefs_clientes.items():
-                    # Verifica se está ativo, tem email e ainda não foi enviado hoje
-                    if config.get("ativo") and config.get("email") and config.get("ultimo_envio") != hoje_str:
+                    email_destino = config.get("email")
+                    ultimo_envio = config.get("ultimo_envio")
+                    ativo = config.get("ativo", True)
+                    
+                    # Só envia se: 1. Ativo, 2. Tem Email cadastrado, 3. Não foi enviado hoje
+                    if ativo and email_destino and ultimo_envio != hoje_str:
                         try:
-                            print(f"[Scheduler] Iniciando backup cliente: {usuario}")
-                            arquivo_zip = utils.gerar_zip_usuario(usuario)
+                            # Padrão de nome do ZIP gerado no utils.py (ex: backup_usuario_20231025.zip)
+                            nome_zip_esperado = f"backup_{usuario}_{agora.strftime('%Y%m%d')}.zip"
                             
-                            if arquivo_zip and os.path.exists(arquivo_zip):
-                                sucesso = utils.enviar_email_backup_servico(config["email"], arquivo_zip)
-                                if sucesso:
-                                    utils.atualizar_status_envio_cliente(usuario, hoje_str)
-                                    print(f"[Scheduler] Sucesso envio cliente: {usuario}")
-                                    # Limpeza
-                                    os.remove(arquivo_zip)
-                            else:
-                                print(f"[Scheduler] Arquivo ZIP vazio ou inexistente para {usuario}")
+                            # Verifica se o arquivo de backup já existe no diretório padrão
+                            if os.path.exists(nome_zip_esperado):
                                 
-                        except Exception as e_cli:
-                            print(f"[Scheduler] Erro ao processar cliente {usuario}: {e_cli}")
-                            # Continua para o próximo cliente, não para o loop
+                                # Confirmação extra: verifica se a data de modificação física é de hoje
+                                mtime = os.path.getmtime(nome_zip_esperado)
+                                data_modificacao = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+                                
+                                if data_modificacao == hoje_str:
+                                    print(f"[Scheduler] Backup de hoje encontrado para {usuario}. Enviando...")
+                                    
+                                    # Dispara o e-mail via SMTP aproveitando a função já existente
+                                    sucesso = utils.enviar_email_backup_servico(email_destino, nome_zip_esperado)
+                                    
+                                    if sucesso:
+                                        # Atualiza a flag de envio usando a assinatura correta do utils.py
+                                        utils.atualizar_status_envio_cliente(usuario, hoje_str)
+                                        print(f"[Scheduler] Backup diário enviado com sucesso para {usuario}")
+                                    else:
+                                        print(f"[Scheduler] Falha ao tentar enviar e-mail para {usuario}")
+                                else:
+                                    # Arquivo existe, mas é de dias anteriores. Ignora.
+                                    pass
+                            else:
+                                # Não há backup gerado hoje. Ignora sem disparar erros.
+                                pass
+                                
+                        except Exception as e_user:
+                            print(f"[Scheduler] Erro isolado ao processar usuário {usuario}: {e_user}")
 
-                # --- 2. ROTINA DE ADMIN (Global/Auditoria) ---
-                config_admin = utils.carregar_config_backup() # Configuração global existente
-                estado_admin = utils.carregar_estado_backup() # Estado global existente
-                
-                email_admin = config_admin.get("email")
-                ultimo_envio_admin = estado_admin.get("data_ultimo_envio")
-                
-                admin_ativo = config_admin.get("ativo", bool(email_admin))
-
-                if admin_ativo and email_admin and ultimo_envio_admin != hoje_str:
-                    try:
-                        print(f"[Scheduler] Iniciando Auditoria Global para: {email_admin}")
-                        zip_global = utils.gerar_zip_sistema() # Usa função existente que zipa tudo
-                        
-                        if zip_global and os.path.exists(zip_global):
-                            sucesso = utils.enviar_email_backup_servico(email_admin, zip_global)
-                            if sucesso:
-                                utils.salvar_estado_backup(hoje_str, "sucesso")
-                                print("[Scheduler] Backup Auditoria enviado.")
-                                os.remove(zip_global)
-                        else:
-                            utils.salvar_estado_backup(None, "sem_dados")
-                            print("[Scheduler] Auditoria sem dados para envio.")
-                    except Exception as e_adm:
-                        print(f"[Scheduler] Erro crítico no backup Admin: {e_adm}")
-
-            # Aguarda 60 segundos antes da próxima verificação
+            # Dorme 60 segundos para evitar processamento excessivo de CPU
             time.sleep(60)
             
         except Exception as e:
-            print(f"[Scheduler] Erro crítico na thread: {e}")
+            print(f"[Scheduler] Erro crítico no loop principal: {e}")
             time.sleep(60)
 
-# Mantenha a função iniciar_agendador() inalterada
 def iniciar_agendador():
+    """
+    Garante que a thread do agendador só é iniciada uma vez no ciclo de vida do Streamlit.
+    """
     if 'agendador_iniciado' not in st.session_state:
         thread = threading.Thread(target=_rotina_agendamento, daemon=True)
         thread.start()
         st.session_state['agendador_iniciado'] = True
-
-        print("[System] Agendador atualizado iniciado.")
-
+        print(f"[System] Agendador configurado para as {HORA_ENVIO}:{MINUTO_ENVIO:02d}.")
+    return True
