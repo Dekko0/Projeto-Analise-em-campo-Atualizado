@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import os
 import bcrypt
+from streamlit_cookies_controller import CookieController # <-- Adicionado
 from utils import carregar_dados_locais, carregar_modelo_atual
 
 USUARIOS_FILE = "usuarios.json"
@@ -36,7 +37,7 @@ def excluir_usuario(nome_usuario):
         return True
     return False
 
-# FUNÇÕES DE LOGICA
+# FUNÇÕES DE LÓGICA
 def alterar_senha(usuario, senha_atual, nova_senha):
     users = carregar_usuarios()
     hash_armazenado = users.get(usuario)
@@ -50,25 +51,21 @@ def alterar_senha(usuario, senha_atual, nova_senha):
 def tela_login():
     st.markdown("<br><br>", unsafe_allow_html=True)
     l, c, r = st.columns([1, 1.2, 1])
+    
+    # Controlador de Cookies
+    controller = CookieController()
+
     with c:
         with st.container(border=True):
-            # icone Google (raio)
             st.markdown("<h1 style='text-align: center; color: #16FA34;'><span class='material-symbols-outlined' style='font-size: 40px;'>bolt</span> PoupEnergia</h1>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center;'>Sistema de Levantamento de Cargas</p>", unsafe_allow_html=True)
             
-            # ---auth.py---
-
-# ... (código existente acima) ...
-
             u_db = carregar_usuarios()
             u = st.selectbox("Técnico Responsável", options=["Selecione..."] + list(u_db.keys()))
             p = st.text_input("Senha de Acesso", type="password")
             
-            # --- NOVO: Checkbox Lembrar de mim ---
             lembrar = st.checkbox("Lembrar de mim (7 dias)")
-            # -------------------------------------
             
-            # icone no botão
             if st.button("Acessar Sistema", use_container_width=True, type="primary"):
                 if u in u_db:
                     is_valid, precisa_migrar = verificar_senha(p, u_db[u])
@@ -80,17 +77,17 @@ def tela_login():
                         st.session_state['usuario_ativo'] = u
                         st.session_state['db_formularios'] = carregar_dados_locais()
                         
-                        # --- NOVO: Persistência ---
+                        # --- NOVO: Persistência no Navegador via Cookie ---
                         if lembrar:
-                            from utils import salvar_sessao_persistente
-                            salvar_sessao_persistente(u)
-                        # --------------------------
+                            from utils import criar_sessao_persistente
+                            token = criar_sessao_persistente(u)
+                            # Define o cookie no navegador do usuário (Expira em 7 dias = 604800 segundos)
+                            controller.set("poupenergia_session", token, max_age=7*86400)
+                        # -------------------------------------------------
 
                         carregar_modelo_atual()
                         st.rerun()
                 
                 st.error("Usuário ou senha incorretos.")
 
-# ... (código existente abaixo) ...
-                
     st.stop()
