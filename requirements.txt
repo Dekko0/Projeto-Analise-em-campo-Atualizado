@@ -5,3 +5,4 @@ xlsxwriter
 bcrypt
 st-gsheets-connection
 pytz
+streamlit-cookies-controller
