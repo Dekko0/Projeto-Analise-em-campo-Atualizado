@@ -1,7 +1,0 @@
-streamlit
-pandas
-openpyxl
-xlsxwriter
-bcrypt
-st-gsheets-connection
-pytz
